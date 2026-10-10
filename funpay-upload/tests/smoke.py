@@ -162,7 +162,7 @@ async def main() -> int:
         check(deal["stage"] == 4, "этап 4 — получена")
 
         r = await post(f"/api/deals/{deal_id}/review", {"text": "Всё прошло отлично"})
-        check(r.status == 200, "отзыв оставлен")
+        check(r.status == 403, f"отзывы внутри бота выключены (HTTP {r.status})")
 
         print("\n[7] Списки, кошельки, лидеры, отзывы")
         r = await get("/api/deals?scope=history")
@@ -187,10 +187,9 @@ async def main() -> int:
 
         r = await get("/api/reviews")
         review_payload = await r.json()
-        check(len(review_payload["reviews"]) == 1, "отзыв виден в списке")
+        check(len(review_payload["reviews"]) == 0, "список отзывов пуст")
         rating = review_payload["rating"]
-        check(rating["count"] == 1, "рейтинг посчитан")
-        check(0 <= rating["stars"] <= 5, "число звёзд в диапазоне 0-5")
+        check(rating["count"] == 0, "рейтинг не накручен")
         check(deal["code"].startswith("deal_") is False, f"у сделки есть код {deal['code']}")
 
         print("\n[8] Защита от чужих сделок")
