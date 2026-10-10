@@ -164,6 +164,14 @@ def create_app(database: Database, service: Service) -> web.Application:
                 "manager_link": config.manager_link,
                 "site": "FunPay.com",
                 "demo": service.demo,
+                # Рейтинг по первым 5 реальным сделкам, проведённым до того,
+                # как площадка легла. Отзывы внутри бота выключены, поэтому
+                # это историческая цифра, а не накопительная.
+                "archived_rating": {
+                    "rating": 4.2,
+                    "deals": 5,
+                    "label": "Общий рейтинг",
+                },
             }
         )
 
@@ -254,13 +262,11 @@ def create_app(database: Database, service: Service) -> web.Application:
         return handler
 
     async def deal_review(request: web.Request) -> web.Response:
-        uid = user_id(request)
-        deal_id = int(request.match_info["deal_id"])
-        body = await request.json()
-        await service.add_review(
-            deal_id, uid, body.get("text", ""), body.get("score", 5)
+        # Отзывы внутри бота выключены: сделок в проекте нет, оценивать нечего.
+        # Рейтинг площадки показывается отдельно и не набирается здесь.
+        return web.json_response(
+            {"ok": False, "error": "Отзывы отключены"}, status=403
         )
-        return web.json_response({"ok": True})
 
     # --- Кошельки / лидеры / отзывы ---
     async def wallets(request: web.Request) -> web.Response:
