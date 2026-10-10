@@ -171,7 +171,7 @@ def create_app(database: Database, service: Service) -> web.Application:
                 "archived_rating": {
                     "rating": 4.2,
                     "deals": 5,
-                    "label": "Рейтинг по первым 5 сделкам",
+                    "label": "Общий рейтинг",
                 },
             }
         )
