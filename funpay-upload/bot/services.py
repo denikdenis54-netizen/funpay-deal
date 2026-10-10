@@ -256,7 +256,8 @@ class Service:
         elif status == D.COMPLETED:
             headline = "Сделка завершена"
             detail = "Средства переведены продавцу. Спасибо за сделку!"
-            actions = ["review"]
+            # Отзывы внутри бота выключены — оценивать нечего.
+            actions = []
         else:
             headline = "Сделка отменена"
             detail = "Средства возвращены покупателю."
