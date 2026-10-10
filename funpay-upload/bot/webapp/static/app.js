@@ -641,8 +641,9 @@
     const list = $('#walletList');
     list.innerHTML = '<div class="empty">Загружаю…</div>';
     try {
-      const { balances, currencies, methods } = await api('/api/wallets');
+      const { balances, frozen, currencies, methods } = await api('/api/wallets');
       state.balances = balances;
+      state.frozen = frozen || {};
       state.currencies = currencies;
       renderBalances(list);
 
@@ -811,11 +812,12 @@ const reviewSheet = { dealId: null, score: 5 };
 
   async function loadProfile() {
     try {
-      const [{ deals }, { balances, currencies }] = await Promise.all([
+      const [{ deals }, { balances, frozen, currencies }] = await Promise.all([
         api('/api/deals?scope=all'),
         api('/api/wallets'),
       ]);
       state.balances = balances;
+      state.frozen = frozen || {};
       state.currencies = currencies;
       renderBalances($('#balanceList'));
 
@@ -835,12 +837,18 @@ const reviewSheet = { dealId: null, score: 5 };
     const hideZero = $('#hideZero')?.checked;
     container.innerHTML = state.currencies.map((c) => {
       const value = state.balances[c.code] ?? 0;
+      const frozen = state.frozen?.[c.code] ?? 0;
       const zero = Math.abs(value) < 0.005;
+      // Снежинка рядом с суммой: деньги пришли по сделке, но ждут
+      // подтверждения получения — потратить их пока нельзя.
+      const snow = frozen > 0.005
+        ? `<span class="balance-snow" title="Заморожено: ${escapeHtml(money(frozen, c.code))}">❄️</span>`
+        : '';
       return `
-        <div class="balance-row${hideZero && zero ? ' is-hidden' : ''}" data-cur="${c.code}">
+        <div class="balance-row${hideZero && zero ? ' is-hidden' : ''}${frozen > 0.005 ? ' is-frozen' : ''}" data-cur="${c.code}">
           <span class="balance-icon" style="background:${c.color || '#2b7cff'}">${escapeHtml(c.icon || c.code[0])}</span>
           <span class="balance-name">${escapeHtml(c.code)}</span>
-          <span class="balance-val">${money(value, c.code).replace(' ' + c.code, '')}</span>
+          <span class="balance-val">${money(value, c.code).replace(' ' + c.code, '')}${snow}</span>
         </div>`;
     }).join('');
   }
@@ -949,8 +957,9 @@ const reviewSheet = { dealId: null, score: 5 };
       renderCurrencies();
       $$('.chip[data-currency]')[0]?.classList.add('is-active');
       renderPayMethods();
-      const { balances } = await api('/api/wallets');
+      const { balances, frozen } = await api('/api/wallets');
       state.balances = balances;
+      state.frozen = frozen || {};
 
       // Оформление — необязательные элементы, их отсутствие не должно ломать форму
       const note = $('#demoNote');
