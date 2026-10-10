@@ -246,11 +246,13 @@ class Service:
                 detail = "Продавец передал подарок. Подтверди получение, чтобы завершить сделку."
                 actions = ["confirm"]
             else:
+                # Завершает сделку только покупатель: продавец не может
+                # закрыть её сам и получить деньги без подтверждения.
                 detail = (
-                    "Подарок передан. Можно завершить сделку самому "
-                    "или дождаться подтверждения от покупателя."
+                    "Подарок передан. Сделку завершит покупатель — "
+                    "подожди подтверждения получения."
                 )
-                actions = ["close"]
+                actions = []
         elif status == D.COMPLETED:
             headline = "Сделка завершена"
             detail = "Средства переведены продавцу. Спасибо за сделку!"
@@ -370,12 +372,16 @@ class Service:
         return await self.get_deal(deal_id, user_id)
 
     async def close(self, deal_id: int, user_id: int) -> dict[str, Any]:
-        """Продавец завершает сделку после передачи подарка."""
+        """Завершение сделки. Разрешено только покупателю.
+
+        Продавец закрыть сделку сам не может: иначе он получил бы деньги
+        без подтверждения, что товар действительно дошёл.
+        """
         row = await self._load(deal_id, user_id)
         if row["status"] != D.DELIVERED:
             raise DealError("Завершить сделку можно только после передачи подарка")
-        if self.role_for(row, user_id) != "seller":
-            raise DealError("Завершить сделку может продавец")
+        if self.role_for(row, user_id) != "buyer":
+            raise DealError("Завершить сделку может только покупатель")
 
         if row["provider_ref"]:
             await self._provider_release(row["provider_ref"])
