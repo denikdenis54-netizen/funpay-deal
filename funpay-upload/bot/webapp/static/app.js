@@ -509,6 +509,20 @@
     haptic();
   }
 
+  // Рейтинг по первым 5 сделкам, проведённым до паузы площадки.
+  // Отзывы внутри бота выключены, поэтому цифра историческая:
+  // новых оценок не добавится, и накопительным рейтингом не выглядит.
+  function renderArchivedRating() {
+    const a = state.config?.archived_rating;
+    const box = $('#archivedRating');
+    if (!a || !box) return;
+    $('#archivedNum').textContent = Number(a.rating).toFixed(1);
+    $('#archivedStars').innerHTML = Array.from({ length: 5 }, (_, i) =>
+      `<i class="${i < Math.round(a.rating) ? 'on' : ''}">★</i>`).join('');
+    $('#archivedLabel').textContent = a.label || '';
+    box.hidden = false;
+  }
+
   function renderCurrencies() {
     const box = $('#currencyChips');
     box.innerHTML = state.config.currencies.map((c) =>
@@ -915,6 +929,7 @@ const reviewSheet = { dealId: null, score: 5 };
     try {
       state.config = await api('/api/config');
       state.currencies = state.config.currencies;
+      renderArchivedRating();
       state.user = await api('/api/register', { method: 'POST' });
 
       // Сначала рисуем то, без чего форма не работает
