@@ -1,0 +1,1 @@
+"""FunPay Deal — Telegram Mini App для безопасных сделок."""
