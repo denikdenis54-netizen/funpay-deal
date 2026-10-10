@@ -329,3 +329,11 @@ select.input{
 }
 .rating-archived .rating-num{font-size:38px}
 .rating-archived .muted{font-size:13px;margin-top:6px}
+
+/* ---------- Замороженные средства ---------- */
+.balance-snow{margin-left:6px;font-size:15px;vertical-align:-1px}
+.balance-row.is-frozen .balance-val{color:#2b7cff}
+.balance-row.is-frozen .balance-name::after{
+  content:'заморожено';display:block;font-size:10px;
+  color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600;
+}
