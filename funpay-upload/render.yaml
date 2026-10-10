@@ -4,7 +4,6 @@ services:
     runtime: docker
     plan: free
     region: frankfurt
-        rootDir: funpay-upload
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
@@ -18,7 +17,5 @@ services:
         sync: false
       - key: ESCROW_PROVIDER
         value: mock
-      - key: PORT
-        value: 8080
       - key: LOG_LEVEL
         value: INFO
