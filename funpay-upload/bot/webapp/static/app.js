@@ -330,6 +330,8 @@
         <button class="btn" data-act="forward">Переслать ссылку</button>` : ''}
         ${actionButtons}
         <button class="btn" data-act="manager">Написать менеджеру</button>
+        ${isGuest || !state.config?.bot_link ? '' :
+        '<button class="btn" data-act="startbot">Включить уведомления в боте</button>'}
         <button class="btn" data-act="safety">⚠ Безопасность сделки</button>
         ${cancelled || deal.status === 'completed' || isGuest ? '' : '<button class="btn" data-act="cancel">Отменить сделку</button>'}
       </div>
@@ -344,6 +346,7 @@
   async function onDealAction(action, deal, shareUrl) {
     try {
       if (action === 'manager') { openManager(); return; }
+      if (action === 'startbot') { openStartBot(); return; }
       if (action === 'safety') { openSafety(); return; }
 
       if (action === 'share' || action === 'forward') {
@@ -424,6 +427,16 @@
       notify('error');
       toast(err.message);
     }
+  }
+
+  // Бот не может написать первым, пока пользователь его не запустил.
+  // Кнопка открывает бота — после этого уведомления доходят.
+  function openStartBot() {
+    const link = state.config?.bot_link;
+    if (!link) { toast('Ссылка на бота недоступна'); return; }
+    if (tg?.openTelegramLink) tg.openTelegramLink(link);
+    else window.open(link, '_blank');
+    toast('Открой бота и нажми «Начать» — без этого уведомления не придут');
   }
 
   function openManager() {
