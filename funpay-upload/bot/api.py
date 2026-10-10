@@ -85,7 +85,7 @@ def create_app(database: Database, service: Service) -> web.Application:
     async def no_store_static(request: web.Request, handler):
         """Не кэшировать Mini App: иначе правка JS/CSS не видна до перезагрузки."""
         response = await handler(request)
-        if request.path.startswith("/static/") or request.path == "/":
+        if request.path.startswith("/static/") or request.path in ("/", "/index.html"):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
             response.headers["Pragma"] = "no-cache"
         return response
@@ -139,6 +139,11 @@ def create_app(database: Database, service: Service) -> web.Application:
     async def index(request: web.Request) -> web.StreamResponse:
         return web.FileResponse(WEBAPP_DIR / "index.html")
 
+    async def favicon(request: web.Request) -> web.StreamResponse:
+        # Браузер и Telegram запрашивают иконку сами. Отдаём пустой ответ,
+        # иначе в логах сыплется 500 на каждой загрузке.
+        return web.Response(status=204)
+
     async def health(request: web.Request) -> web.Response:
         return web.json_response(
             {
@@ -171,7 +176,7 @@ def create_app(database: Database, service: Service) -> web.Application:
                 "archived_rating": {
                     "rating": 4.2,
                     "deals": 5,
-                    "label": "Общий рейтинг",
+                    "label": "Рейтинг по первым 5 сделкам",
                 },
             }
         )
@@ -273,10 +278,12 @@ def create_app(database: Database, service: Service) -> web.Application:
     async def wallets(request: web.Request) -> web.Response:
         uid = user_id(request)
         balances = await service.balances(uid)
+        frozen = await database.balances_with_frozen(uid)
         return web.json_response(
             {
                 "ok": True,
                 "balances": balances,
+                "frozen": {c: v["frozen"] for c, v in frozen.items()},
                 "currencies": [{"code": c, **m} for c, m in CURRENCIES.items()],
                 "methods": {
                     c: methods_for_currency(c) for c in CURRENCIES
@@ -322,6 +329,8 @@ def create_app(database: Database, service: Service) -> web.Application:
         return web.json_response({"ok": True, "reviews": items, "rating": rating})
 
     app.router.add_get("/", index)
+    app.router.add_get("/index.html", index)
+    app.router.add_get("/favicon.ico", favicon)
     app.router.add_get("/health", health)
     app.router.add_get("/api/config", get_config)
     app.router.add_post("/api/register", register)
