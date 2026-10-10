@@ -322,3 +322,10 @@ select.input{
   .tabbar{max-width:520px;left:50%;transform:translateX(-50%)}
   .sheet{max-width:520px;left:50%;transform:translateX(-50%)}
 }
+/* ---------- Рейтинг по проведённым сделкам ---------- */
+.rating-archived{
+  text-align:center;padding:14px 0 4px;
+  border-top:1px solid var(--line);margin-top:14px;
+}
+.rating-archived .rating-num{font-size:38px}
+.rating-archived .muted{font-size:13px;margin-top:6px}
