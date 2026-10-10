@@ -110,6 +110,9 @@ CREATE TABLE IF NOT EXISTS wallets (
     user_id  INTEGER NOT NULL,
     currency TEXT    NOT NULL,
     balance  REAL    NOT NULL DEFAULT 0,
+    -- Часть balance, которая пришла по сделке и ждёт подтверждения
+    -- получения. В кошельке показывается со снежинкой, тратить нельзя.
+    frozen   REAL    NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, currency)
 );
 """
@@ -132,6 +135,7 @@ class Database:
         wanted = {
             "deals": [("code", "TEXT"), ("counterparty_id", "INTEGER")],
             "reviews": [("score", "INTEGER NOT NULL DEFAULT 5")],
+            "wallets": [("frozen", "REAL NOT NULL DEFAULT 0")],
         }
         for table, columns in wanted.items():
             cur = await self._db.execute(f"PRAGMA table_info({table})")
@@ -353,6 +357,63 @@ class Database:
         )
         await self.db.commit()
         return await self.get_balance(user_id, currency)
+
+    async def frozen_balance(self, user_id: int, currency: str) -> float:
+        cur = await self.db.execute(
+            "SELECT frozen FROM wallets WHERE user_id = ? AND currency = ?",
+            (user_id, currency),
+        )
+        row = await cur.fetchone()
+        return float(row["frozen"]) if row else 0.0
+
+    async def balances_with_frozen(
+        self, user_id: int
+    ) -> dict[str, dict[str, float]]:
+        """Балансы вместе с замороженной частью — для кошелька в интерфейсе."""
+        cur = await self.db.execute(
+            "SELECT currency, balance, frozen FROM wallets WHERE user_id = ?",
+            (user_id,),
+        )
+        return {
+            r["currency"]: {
+                "balance": float(r["balance"]),
+                "frozen": float(r["frozen"]),
+            }
+            for r in await cur.fetchall()
+        }
+
+    async def credit_frozen(
+        self, user_id: int, currency: str, amount: float
+    ) -> None:
+        """Зачисляет средства как замороженные: видны в кошельке, но не тратятся."""
+        await self.db.execute(
+            """INSERT INTO wallets (user_id, currency, balance, frozen)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(user_id, currency) DO UPDATE SET
+                   balance = wallets.balance + excluded.balance,
+                   frozen  = wallets.frozen  + excluded.frozen""",
+            (user_id, currency, amount, amount),
+        )
+        await self.db.commit()
+
+    async def unfreeze(self, user_id: int, currency: str, amount: float) -> None:
+        """Снимает заморозку после подтверждения — сумма остаётся на балансе."""
+        await self.db.execute(
+            """UPDATE wallets SET frozen = MAX(0, frozen - ?)
+               WHERE user_id = ? AND currency = ?""",
+            (amount, user_id, currency),
+        )
+        await self.db.commit()
+
+    async def drop_frozen(self, user_id: int, currency: str, amount: float) -> None:
+        """Сделка отменена: убирает зачисленную сумму вместе с заморозкой."""
+        await self.db.execute(
+            """UPDATE wallets
+               SET balance = MAX(0, balance - ?), frozen = MAX(0, frozen - ?)
+               WHERE user_id = ? AND currency = ?""",
+            (amount, amount, user_id, currency),
+        )
+        await self.db.commit()
 
     # --- Лидеры ------------------------------------------------------------
     async def top_users(self, limit: int = 10) -> list[aiosqlite.Row]:
