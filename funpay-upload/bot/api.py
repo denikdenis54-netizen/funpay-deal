@@ -162,6 +162,7 @@ def create_app(database: Database, service: Service) -> web.Application:
                     for code, meta in PAY_METHODS.items()
                 ],
                 "manager_link": config.manager_link,
+                "bot_link": config.bot_link,
                 "site": "FunPay.com",
                 "demo": service.demo,
                 # Рейтинг по первым 5 реальным сделкам, проведённым до того,
@@ -170,7 +171,7 @@ def create_app(database: Database, service: Service) -> web.Application:
                 "archived_rating": {
                     "rating": 4.2,
                     "deals": 5,
-                    "label": "Общий рейтинг",
+                    "label": "Рейтинг по первым 5 сделкам",
                 },
             }
         )
