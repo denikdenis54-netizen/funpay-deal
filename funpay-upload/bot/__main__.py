@@ -69,6 +69,13 @@ async def main() -> None:
     dispatcher = Dispatcher()
     dispatcher.include_router(handlers.router)
 
+    # Уведомления о ходе сделки приходят в чат бота. Пользователь должен
+    # хотя бы раз нажать /start — иначе Telegram не разрешает писать ему.
+    async def notify(user_id: int, text: str) -> None:
+        await bot.send_message(user_id, text, parse_mode="HTML")
+
+    service.set_notifier(notify)
+
     try:
         me = await bot.get_me()
         config.bot_username = me.username
