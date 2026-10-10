@@ -336,6 +336,18 @@ class Service:
             return row["user_id"]
         return row["counterparty_id"]
 
+    def seller_id(self, row) -> int | None:
+        """Telegram ID продавца.
+
+        Роль создателя зависит от side: у «buy» он покупатель, у «sell» —
+        продавец. Поэтому брать counterparty_id напрямую нельзя: когда
+        сделку создаёт продавец, обе стороны указались бы на второго
+        участника и уведомления ушли бы одному человеку дважды.
+        """
+        if self.user_role(row) == "seller":
+            return row["user_id"]
+        return row["counterparty_id"]
+
     async def get_by_code(self, code: str, user_id: int) -> dict[str, Any]:
         """Сделка по коду из ссылки — для перехода второй стороны."""
         row = await self.db.get_deal_by_code((code or "").strip().upper())
@@ -399,8 +411,14 @@ class Service:
         после подтверждения — поэтому «зачислено» здесь и не написано.
         """
         buyer_id = self.buyer_id(row)
-        seller_id = row["counterparty_id"]
-        if buyer_id is None:
+        seller_id = self.seller_id(row)
+        if buyer_id is None or seller_id is None:
+            return
+        if buyer_id == seller_id:
+            log.warning(
+                "Сделка %s: стороны совпали (id %s), уведомление о оплате "
+                "не отправлено", row["code"], buyer_id,
+            )
             return
 
         parties = await self._parties(row)
