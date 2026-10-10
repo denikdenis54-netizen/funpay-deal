@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import os
 import random
 import secrets
 import time
-from typing import Any
+from typing import Any, Awaitable, Callable, Optional
 
 from . import db as D
 from .currencies import (
@@ -18,11 +19,17 @@ from .currencies import (
     is_valid_method,
     methods_for_currency,
 )
+from .config import config
 from .db import Database, row_to_deal
 from .funpay.base import EscrowProvider, OrderInfo, ProviderNotImplemented
 from .funpay.mock import MockProvider
 
 log = logging.getLogger(__name__)
+
+
+def _esc(text: Any) -> str:
+    """Экранирование для HTML-режима Telegram."""
+    return html.escape(str(text), quote=False)
 
 MAX_AMOUNT = 100_000_000
 MAX_TITLE = 512
@@ -45,11 +52,37 @@ class DealError(Exception):
 
 
 class Service:
-    def __init__(self, database: Database, provider: EscrowProvider) -> None:
+    def __init__(
+        self,
+        database: Database,
+        provider: EscrowProvider,
+        notify: Optional[Callable[[int, str], Awaitable[None]]] = None,
+    ) -> None:
         self.db = database
         self.provider = provider
         self.demo = isinstance(provider, MockProvider) and provider._demo
         self._tasks: set[asyncio.Task] = set()
+        # Кто отправляет сообщения в Telegram. Ставится через set_notifier()
+        # из __main__, чтобы сервис не зависел от aiogram.
+        self._notify: Optional[Callable[[int, str], Awaitable[None]]] = None
+
+    def set_notifier(
+        self, notify: Optional[Callable[[int, str], Awaitable[None]]]
+    ) -> None:
+        self._notify = notify
+
+    async def notify_user(self, user_id: int | None, text: str) -> None:
+        """Отправляет сообщение в Telegram. Молчит, если отправка не вышла.
+
+        Пользователь мог ни разу не нажать /start — тогда Telegram не даст
+        написать ему первым, и это нормально, а не ошибка.
+        """
+        if self._notify is None or not user_id:
+            return
+        try:
+            await self._notify(user_id, text)
+        except Exception:  # noqa: BLE001 — уведомление не должно ломать сделку
+            log.warning("Не удалось отправить уведомление пользователю %s", user_id)
 
     # --- Роли сторон -------------------------------------------------------
     @staticmethod
@@ -343,9 +376,61 @@ class Service:
         await self._provider_hold(ref)
         await self.db.set_status(deal_id, D.PAID)
 
+        await self._notify_paid(row)
+
         if self.demo:
             self._spawn(self._demo_deliver(deal_id))
         return await self.get_deal(deal_id, user_id)
+
+    async def _notify_paid(self, row) -> None:
+        """Уведомления обеим сторонам сразу после оплаты.
+
+        Формулировки описывают, что происходит с деньгами на самом деле:
+        сумма списана с кошелька покупателя и держится в заморозке до
+        подтверждения получения. На баланс продавца она попадёт только
+        после подтверждения — поэтому «зачислено» здесь и не написано.
+        """
+        buyer_id = self.buyer_id(row)
+        seller_id = row["counterparty_id"]
+        if buyer_id is None:
+            return
+
+        parties = await self._parties(row)
+        amount = f"{float(row['amount']):.2f} {row['currency']}"
+        code = _esc(row["code"])
+        seller_label = (
+            f"@{parties['seller_name']}" if parties["seller_name"] else "Продавец"
+        )
+        buyer_label = (
+            f"@{parties['buyer_name']}" if parties["buyer_name"] else "Покупатель"
+        )
+
+        # Подарок продавец передаёт менеджеру, а не покупателю напрямую.
+        manager = config.manager_username
+        manager_part = (
+            f'<a href="https://t.me/{_esc(manager)}">@{_esc(manager)}</a>'
+            if manager
+            else "менеджеру"
+        )
+
+        await self.notify_user(
+            seller_id,
+            "💰 <b>Оплата получена</b>\n"
+            f"Сделка <code>{code}</code>\n\n"
+            f"{buyer_label} оплатил <b>{amount}</b>\n\n"
+            "Сумма заморожена до окончания сделки. Зачисление на твой кошелёк "
+            "произойдёт после подтверждения получения от покупателя.\n\n"
+            f"Передай подарок менеджеру {manager_part} и отметь отправку.",
+        )
+        await self.notify_user(
+            buyer_id,
+            "✅ <b>Оплата внесена</b>\n"
+            f"Сделка <code>{code}</code>\n\n"
+            f"<b>{amount}</b> заморожено до окончания сделки.\n\n"
+            f"Продавец — {seller_label}. Передаст подарок через менеджера. "
+            "Менеджер передаст его тебе — после этого подтверди получение, "
+            "тогда сумма уйдёт продавцу. Не подтверждай, пока товар не пришёл.",
+        )
 
     async def deliver(self, deal_id: int, user_id: int) -> dict[str, Any]:
         row = await self._load(deal_id, user_id)
