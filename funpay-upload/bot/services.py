@@ -396,6 +396,12 @@ class Service:
         await self._provider_hold(ref)
         await self.db.set_status(deal_id, D.PAID)
 
+        # Деньги сразу видны у продавца, но помечены замороженными:
+        # потратить их можно только после подтверждения получения.
+        seller = self.seller_id(row)
+        if seller is not None and seller != user_id:
+            await self.db.credit_frozen(seller, currency, amount)
+
         await self._notify_paid(row)
 
         if self.demo:
@@ -480,6 +486,11 @@ class Service:
         ref = row["provider_ref"]
         if ref:
             await self._provider_release(ref)
+        # Покупатель подтвердил получение — заморозка снимается,
+        # сумма остаётся в кошельке продавца доступной.
+        seller = self.seller_id(row)
+        if seller is not None:
+            await self.db.unfreeze(seller, row["currency"], float(row["amount"]))
         await self.db.set_status(deal_id, D.COMPLETED)
         return await self.get_deal(deal_id, user_id)
 
@@ -504,12 +515,18 @@ class Service:
         row = await self._load(deal_id, user_id)
         if row["status"] in (D.COMPLETED, D.CANCELLED):
             raise DealError("Сделку уже нельзя отменить")
-        if row["status"] == D.PAID and row["provider_ref"]:
-            await self._provider_refund(row["provider_ref"])
-            # возврат средств покупателю (он может быть второй стороной)
+        amount = float(row["amount"])
+        if row["status"] in (D.PAID, D.DELIVERED):
+            # Возврат покупателю и снятие зачисления у продавца:
+            # сумма была заморожена в его кошельке, при отмене её убираем.
             buyer = self.buyer_id(row)
+            seller = self.seller_id(row)
             if buyer is not None:
-                await self.db.top_up(buyer, row["currency"], float(row["amount"]))
+                await self.db.top_up(buyer, row["currency"], amount)
+            if seller is not None and seller != buyer:
+                await self.db.drop_frozen(seller, row["currency"], amount)
+            if row["provider_ref"]:
+                await self._provider_refund(row["provider_ref"])
         await self.db.set_status(deal_id, D.CANCELLED)
         return await self.get_deal(deal_id, user_id)
 
