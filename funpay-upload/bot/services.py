@@ -19,6 +19,8 @@ from .currencies import (
     is_valid_method,
     methods_for_currency,
 )
+from aiogram.exceptions import TelegramBadRequest
+
 from .config import config
 from .db import Database, row_to_deal
 from .funpay.base import EscrowProvider, OrderInfo, ProviderNotImplemented
@@ -81,6 +83,12 @@ class Service:
             return
         try:
             await self._notify(user_id, text)
+        except TelegramBadRequest as exc:
+            # Telegram не даёт писать первым тому, кто не запускал бота.
+            # Это не сбой: сообщение просто дойдёт после /start.
+            log.warning(
+                "Уведомление не доставлено пользователю %s: %s", user_id, exc
+            )
         except Exception:  # noqa: BLE001 — уведомление не должно ломать сделку
             log.warning("Не удалось отправить уведомление пользователю %s", user_id)
 
