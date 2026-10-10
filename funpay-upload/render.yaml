@@ -4,6 +4,7 @@ services:
     runtime: docker
     plan: free
     region: frankfurt
+        rootDir: funpay-upload
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
