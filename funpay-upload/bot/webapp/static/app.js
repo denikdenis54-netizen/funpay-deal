@@ -292,7 +292,7 @@
         <span class="cur" style="${curMeta ? `background:${curMeta.color}` : ''}">${escapeHtml(curMeta ? curMeta.icon : cur[0])}</span>
         <div>
           <div class="val">${escapeHtml(money(deal.amount, cur))}</div>
-          <div class="muted">${escapeHtml(deal.user_role === 'buyer' ? 'ВЫФ' : 'ВЫФЫ')}</div>
+          <div class="muted">Оплата: ${escapeHtml(deal.pay_method_title || '—')}</div>
         </div>
       </div>
 
@@ -348,9 +348,9 @@
 
       if (action === 'share' || action === 'forward') {
         const url = shareUrl || '';
-        // Текст, который уходит в пересылку: ссылка + карточка сделки
+        // Telegram сам подставит ссылку из параметра url — если ещё
+        // и первой строкой текста, она приходит в сообщении дважды.
         const text = [
-          url,
           `FunPay — сделка #${deal.code}`,
           money(deal.amount, deal.currency),
           deal.title,
@@ -361,10 +361,11 @@
             `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`
           );
         } else if (navigator.clipboard) {
-          await navigator.clipboard.writeText(text);
+          // В буфер кладём полный текст: пересылать его будут без Telegram.
+          await navigator.clipboard.writeText([url, text].join('\n'));
           toast('Скопировано');
         } else {
-          toast(text);
+          toast([url, text].join('\n'));
         }
         return;
       }
@@ -416,11 +417,7 @@
       await api(`/api/deals/${deal.id}/${action}`, { method: 'POST' });
       notify('success');
       toast(
-        action === 'deliver'
-          ? 'Отправка подтверждена'
-          : action === 'close'
-            ? 'Сделка завершена, деньги продавцу'
-            : 'Сделка завершена, деньги продавцу'
+        action === 'deliver' ? 'Отправка подтверждена' : 'Сделка завершена'
       );
       await openDeal(deal.id);
     } catch (err) {
@@ -451,6 +448,41 @@
       '• Не отправляй товар, пока сделка не появилась в этом приложении.';
     if (tg?.showPopup) tg.showPopup({ title: 'Безопасность сделки', message: text, buttons: [{ type: 'ok' }] });
     else alert(text);
+  }
+
+  // ---------- Экранная клавиатура ----------
+  // На телефоне position:fixed + bottom:0 не учитывает клавиатуру:
+  // поле ввода и кнопка уезжают под неё, и написать текст невозможно.
+  // Считаем перекрытие через visualViewport и поднимаем шторки.
+  function bindKeyboard() {
+    const vv = window.visualViewport;
+    const apply = () => {
+      if (!vv) return;
+      // Ниже этого порога — не клавиатура, а адресная строка браузера
+      const overlap = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+      const kb = overlap > 100 ? Math.round(overlap) : 0;
+      document.documentElement.style.setProperty('--kb', `${kb}px`);
+      $$('.sheet').forEach((s) => {
+        if (s.hidden) return;
+        s.style.bottom = kb ? `${kb}px` : '';
+      });
+    };
+
+    if (vv) {
+      vv.addEventListener('resize', apply);
+      vv.addEventListener('scroll', apply);
+    }
+    // Telegram сообщает об изменении высоты вьюпорта отдельно
+    tg?.onEvent?.('viewportChanged', apply);
+    window.addEventListener('orientationchange', () => setTimeout(apply, 250));
+
+    // Подкручиваем шторку к активному полю
+    document.addEventListener('focusin', (e) => {
+      if (e.target.matches?.('input, textarea, select')) {
+        setTimeout(() => e.target.scrollIntoView?.({ block: 'center' }), 280);
+      }
+    });
+    document.addEventListener('focusout', () => setTimeout(apply, 120));
   }
 
   // ---------- Создание сделки ----------
@@ -878,6 +910,7 @@ const reviewSheet = { dealId: null, score: 5 };
     } catch (_) {}
 
     bind();
+    bindKeyboard();
 
     try {
       state.config = await api('/api/config');
